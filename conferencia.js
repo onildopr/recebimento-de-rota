@@ -43,7 +43,8 @@ $(document).ready(() => {
         'business_closed': 'Negócio fechado',
         'missing': 'Faltante',
         'buyer_moved': 'O comprador mudou de endereço',
-        'buyer_rejected': 'Pacote recusado pelo comprador'
+        'buyer_rejected': 'Pacote recusado pelo comprador',
+        'inaccessible_address' : 'Endereço inacessível',
       };
       return mapa[codigo] || codigo;
     },
@@ -253,7 +254,7 @@ $(document).ready(() => {
     ConferenciaApp.destinationFacilityId = '';
     ConferenciaApp.destinationFacilityName = '';
 
-    const matches = [...html.matchAll(/"id":"(4\d{10})".*?"substatus":"(.*?)"/g)];
+    const matches = [...html.matchAll(/"id":(4\d{10}).*?"substatus":"(.*?)"/g)];
     const idsPendentes = [];
     for (const m of matches) {
       const id = m[1];
