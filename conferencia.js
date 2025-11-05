@@ -45,6 +45,7 @@ $(document).ready(() => {
         'buyer_moved': 'O comprador mudou de endereço',
         'buyer_rejected': 'Pacote recusado pelo comprador',
         'inaccessible_address' : 'Endereço inacessível',
+        'blocked_by_keyword':'Palavra-chave incorreta',
       };
       return mapa[codigo] || codigo;
     },
@@ -329,3 +330,4 @@ $(document).ready(() => {
     ConferenciaApp.atualizarListas();
   });
 });
+
