@@ -17,6 +17,27 @@ $(document).ready(() => {
     orhc: '-',
     percentualDS: '0 %',
 
+    // ========= UPGRADE: normaliza QR/Barcode "sujo" e extrai ID =========
+    normalizarCodigo(raw) {
+      if (!raw) return null;
+
+      // trim + remove caracteres de controle/invisíveis
+      let s = String(raw)
+        .trim()
+        .replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
+
+      // Seu padrão principal: 11 dígitos começando com 4
+      let m = s.match(/(4\d{10})/);
+      if (m) return m[1];
+
+      // Fallback: remove tudo que não for número e pega 11 primeiros
+      m = s.replace(/\D/g, '').match(/(\d{11,})/);
+      if (m) return m[1].slice(0, 11);
+
+      return null;
+    },
+    // ================================================================
+
     registrarDuplicado(codigo) {
       const atual = this.duplicados.get(codigo) || 0;
       this.duplicados.set(codigo, atual + 1);
@@ -46,6 +67,7 @@ $(document).ready(() => {
         'buyer_rejected': 'Pacote recusado pelo comprador',
         'inaccessible_address' : 'Endereço inacessível',
         'blocked_by_keyword':'Palavra-chave incorreta',
+        'picked_up':'Coletado',
       };
       return mapa[codigo] || codigo;
     },
@@ -59,7 +81,15 @@ $(document).ready(() => {
     atualizarListas() {
       $('#conferidos-list').html(
         `<h6>Conferidos (<span class='badge badge-success'>${this.conferidos.size}</span>)</h6>` +
-        Array.from(this.conferidos).map(id => `<li class='list-group-item list-group-item-success' id="id-${id}">${id}</li>`).join('')
+        Array.from(this.conferidos).map(id => {
+          const info = this.timestamps.get(id) || '';
+          const manual = info.includes('(MANUAL)');
+          return `
+            <li class='list-group-item ${manual ? 'list-group-item-info' : 'list-group-item-success'}' id="id-${id}">
+              ${id}
+              ${manual ? "<span class='badge badge-secondary ml-2'>MANUAL</span>" : ""}
+            </li>`;
+        }).join('')
       );
 
       $('#faltantes-list').html(
@@ -84,13 +114,16 @@ $(document).ready(() => {
       this.atualizarProgresso();
     },
 
-    conferirId(codigo) {
+    // ========= UPGRADE: agora recebe origem ('scanner'|'manual') =========
+    conferirId(codigo, origem = 'scanner') {
       if (!codigo) return;
+
       const agora = new Date().toLocaleString();
+      const infoHora = origem === 'manual' ? `${agora} (MANUAL)` : `${agora} (LEITOR)`;
 
       if (this.conferidos.has(codigo) || this.foraDeRota.has(codigo)) {
         this.registrarDuplicado(codigo);
-        this.timestamps.set(codigo, agora);
+        this.timestamps.set(codigo, infoHora);
         this.tocarAlerta();
         $('#barcode-input').val('').focus();
         this.atualizarListas();
@@ -100,16 +133,17 @@ $(document).ready(() => {
       if (this.ids.has(codigo)) {
         this.ids.delete(codigo);
         this.conferidos.add(codigo);
-        this.timestamps.set(codigo, agora);
+        this.timestamps.set(codigo, infoHora);
       } else {
         this.foraDeRota.add(codigo);
-        this.timestamps.set(codigo, agora);
+        this.timestamps.set(codigo, infoHora);
         if (!this.viaCsv) this.tocarAlerta();
       }
 
       $('#barcode-input').val('').focus();
       this.atualizarListas();
     },
+    // ===================================================================
 
     gerarMensagemResumo({ incluirForaDeRota = true } = {}) {
       const rota = this.routeId || '(sem rota)';
@@ -190,18 +224,20 @@ $(document).ready(() => {
 
       ConferenciaApp.viaCsv = true;
       csvData.forEach(line => {
-        const id = (line.match(/\d{11,}/) || [])[0];
+        const id = ConferenciaApp.normalizarCodigo(line);
         if (id) {
           totalLidas++;
-          ConferenciaApp.conferirId(id);
+          ConferenciaApp.conferirId(id, 'scanner');
         }
       });
 
+      ConferenciaApp.viaCsv = false;
       ConferenciaApp.alertar(`Conferência via CSV concluída. ${totalLidas} linhas processadas.`);
     };
     reader.readAsText(file, 'utf-8');
   });
 
+  // ✅ EXPORTAR XLSX (mantido e funcionando)
   $('#export-xlsx').click(() => {
     if (typeof XLSX === 'undefined') {
       ConferenciaApp.alertar('Biblioteca XLSX não carregada. Verifique a conexão ou ordem dos scripts.');
@@ -211,15 +247,30 @@ $(document).ready(() => {
     const ws_data = [['ID', 'Status', 'Situação', 'Horário conferência']];
 
     ConferenciaApp.conferidos.forEach(id => {
-      ws_data.push([id, ConferenciaApp.traduzirStatus(ConferenciaApp.statusById.get(id) || 'pendente'), 'Recebido', ConferenciaApp.timestamps.get(id) || '']);
+      ws_data.push([
+        id,
+        ConferenciaApp.traduzirStatus(ConferenciaApp.statusById.get(id) || 'pendente'),
+        'Recebido',
+        ConferenciaApp.timestamps.get(id) || ''
+      ]);
     });
 
     ConferenciaApp.ids.forEach(id => {
-      ws_data.push([id, ConferenciaApp.traduzirStatus(ConferenciaApp.statusById.get(id) || 'pendente'), 'Pendente', '']);
+      ws_data.push([
+        id,
+        ConferenciaApp.traduzirStatus(ConferenciaApp.statusById.get(id) || 'pendente'),
+        'Pendente',
+        ''
+      ]);
     });
 
     ConferenciaApp.foraDeRota.forEach(id => {
-      ws_data.push([id, 'Fora de rota', 'Fora de rota', ConferenciaApp.timestamps.get(id) || '']);
+      ws_data.push([
+        id,
+        'Fora de rota',
+        'Fora de rota',
+        ConferenciaApp.timestamps.get(id) || ''
+      ]);
     });
 
     const wb = XLSX.utils.book_new();
@@ -233,8 +284,8 @@ $(document).ready(() => {
   $('#extract-btn').click(() => {
     const raw = $('#html-input').val() || '';
 
-    let orhcMatch = /<div class="metric-box__value"><p>(\d{1,2}:\d{2}\s*hs)<\/p><\/div>/i.exec(raw);
-    if (!orhcMatch) orhcMatch = /(\d{1,2}:\d{2}\s*hs)/i.exec(raw);
+    let orhcMatch = /<div class="metric-box__value"><p>(\d{1,2}:\d{2}\s*h)<\/p><\/div>/i.exec(raw);
+    if (!orhcMatch) orhcMatch = /(\d{1,2}:\d{2}\s*h)/i.exec(raw);
     ConferenciaApp.orhc = orhcMatch ? orhcMatch[1] : '-';
 
     let dsMatch = /<div class="chart-details-data__value-item">([\d.,]+)\s*<!-- -->\s*%<\/div>/i.exec(raw);
@@ -255,14 +306,23 @@ $(document).ready(() => {
     ConferenciaApp.destinationFacilityId = '';
     ConferenciaApp.destinationFacilityName = '';
 
-    const matches = [...html.matchAll(/"id":(4\d{10}).*?"substatus":"(.*?)"/g)];
+    // ========= TRECHO AJUSTADO PARA PEGAR substatus null =========
+    const matches = [...html.matchAll(
+      /"id":(4\d{10}).*?"substatus":\s*(null|"([^"]*)")/g
+    )];
+
     const idsPendentes = [];
     for (const m of matches) {
       const id = m[1];
-      const sub = (m[2] || '').trim();
+      const sub = (m[2] === 'null' || m[2] == null) ? null : (m[3] || '').trim();
+
       ConferenciaApp.statusById.set(id, sub);
-      if (sub !== 'delivered' && sub !== 'transferred') idsPendentes.push(id);
+
+      if (sub !== 'delivered' && sub !== 'transferred') {
+        idsPendentes.push(id);
+      }
     }
+    // ========= FIM DO AJUSTE =========
 
     if (!idsPendentes.length) {
       ConferenciaApp.alertar('Nenhum ID pendente encontrado.');
@@ -303,16 +363,70 @@ $(document).ready(() => {
     ConferenciaApp.atualizarListas();
   });
 
-  $('#barcode-input').on('keypress', (e) => {
-    if (e.which === 13) {
+  // ========= UPGRADE: detectar MANUAL vs LEITOR e atualizar #input-origin =========
+  let scanBuffer = '';
+  let lastKeyTime = 0;
+  let origemEntrada = 'manual'; // 'scanner' | 'manual'
+  const SCAN_THRESHOLD = 60; // ms
+
+  function atualizarOrigemUI(origem) {
+    const el = document.getElementById('input-origin');
+    if (!el) return;
+    el.textContent = (origem === 'scanner') ? 'LEITOR' : 'MANUAL';
+  }
+
+  $('#barcode-input').on('keydown', (e) => {
+    const now = Date.now();
+    const diff = now - lastKeyTime;
+    lastKeyTime = now;
+
+    if (diff < SCAN_THRESHOLD) {
+      origemEntrada = 'scanner';
+    } else {
+      origemEntrada = 'manual';
+      scanBuffer = '';
+    }
+
+    atualizarOrigemUI(origemEntrada);
+
+    if (e.key === 'Enter') {
       e.preventDefault();
       ConferenciaApp.viaCsv = false;
-      const codigo = $('#barcode-input').val().trim();
-      ConferenciaApp.conferirId(codigo);
+
+      const raw = (origemEntrada === 'scanner') ? scanBuffer : $('#barcode-input').val();
+      const id = ConferenciaApp.normalizarCodigo(raw);
+
+      if (id) {
+        ConferenciaApp.conferirId(id, origemEntrada);
+      }
+
+      scanBuffer = '';
+      origemEntrada = 'manual';
+      atualizarOrigemUI(origemEntrada);
+      $('#barcode-input').val('').focus();
+      return;
+    }
+
+    if (e.key && e.key.length === 1) {
+      scanBuffer += e.key;
     }
   });
+  // ============================================================================
 
   $('#generate-message').click(() => ConferenciaApp.gerarMensagemResumo({ incluirForaDeRota: true }));
+
+  $('#copy-message').click(() => {
+    const txt = $('#mensagem-final').val();
+    if (!txt) return;
+    navigator.clipboard.writeText(txt).then(() => {
+      // opcional: feedback rápido
+      // ConferenciaApp.alertar('Mensagem copiada!');
+    }).catch(() => {
+      // fallback antigo
+      $('#mensagem-final')[0].select();
+      document.execCommand('copy');
+    });
+  });
 
   $('#back-btn').click(() => {
     $('#conference-interface').addClass('d-none');
@@ -327,7 +441,9 @@ $(document).ready(() => {
     ConferenciaApp.timestamps.clear();
     ConferenciaApp.statusById.clear();
 
+    // reset do indicador
+    atualizarOrigemUI('manual');
+
     ConferenciaApp.atualizarListas();
   });
 });
-
