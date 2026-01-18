@@ -8,11 +8,97 @@
   <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+
   <style>
     .bg-success-flash { background-color: #d4edda !important; }
     .bg-danger-flash { background-color: #f8d7da !important; }
     .d-none { display: none !important; }
     .list-section { max-height: 400px; overflow-y: auto; }
+
+    /* Upgrade: indicador de origem (manual/leitor) */
+    #input-origin {
+      padding: 2px 8px;
+      border-radius: 10px;
+      display: inline-block;
+      background: rgba(0,0,0,0.05);
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      /* ===== Tela final 1700x900 para print ===== */
+      .final-screen{
+        width:1700px;
+        height:900px;
+        background:#fff;
+        border:2px solid rgba(0,0,0,0.15);
+        border-radius:10px;
+        padding:14px;
+        box-sizing:border-box;
+        margin: 0 auto;
+      }
+
+      .final-header{
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        margin-bottom:10px;
+      }
+
+      .final-title{
+        font-size:20px;
+        font-weight:800;
+      }
+
+      .final-sub{
+        font-size:12px;
+        opacity:0.75;
+      }
+
+      .final-grid{
+        display:grid;
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: 1fr 1fr;
+        gap:10px;
+        height: calc(900px - 14px - 14px - 56px); /* espaço útil */
+      }
+
+      .final-card{
+        border:1px solid rgba(0,0,0,0.12);
+        border-radius:10px;
+        padding:10px;
+        box-sizing:border-box;
+        overflow:hidden; /* sem rolagem */
+      }
+
+      .final-card-title{
+        font-size:14px;
+        font-weight:800;
+        margin-bottom:6px;
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+      }
+
+      .final-list{
+        height: calc(100% - 22px);
+        font-size:10px;          /* compacto */
+        line-height:1.15;
+        column-count:4;          /* colunas dentro do card */
+        column-gap:12px;
+        overflow:hidden;         /* sem rolagem */
+        white-space:nowrap;      /* IDs em uma linha */
+      }
+
+      .final-list .id-item{
+        display:block;
+        padding:1px 0;
+      }
+
+      .final-footer{
+        margin-top:8px;
+        font-size:11px;
+        opacity:0.7;
+      }
+
+    }
   </style>
 </head>
 <body>
@@ -42,6 +128,7 @@
         </div>
         <h3 id="cluster-title"></h3>
         <h4 id="route-title"></h4>
+
         <div class="my-2">
           <div>Pacotes pendentes: <strong><span id="extracted-total">0</span></strong></div>
           <div>Pacotes Recebidos: <strong><span id="verified-total">0</span></strong></div>
@@ -49,7 +136,54 @@
             <div id="progress-bar" class="progress-bar" role="progressbar" style="width: 0%"></div>
           </div>
         </div>
+        <!-- Tela final para print (1700x900) -->
+        <div id="final-interface" class="d-none">
+          <div class="final-screen">
+            <div class="final-header">
+              <div>
+                <div class="final-title">COLETA FINAL — CONFERÊNCIA</div>
+                <div class="final-sub">
+                  <span id="final-route"></span> • <span id="final-cluster"></span> • <span id="final-xpt"></span>
+                </div>
+              </div>
+              <div class="final-actions">
+                <button id="final-back" class="btn btn-secondary btn-sm">Voltar</button>
+              </div>
+            </div>
+
+            <div class="final-grid">
+              <div class="final-card">
+                <div class="final-card-title">CONFERIDOS (<span id="final-count-conferidos">0</span>)</div>
+                <div id="final-list-conferidos" class="final-list"></div>
+              </div>
+
+              <div class="final-card">
+                <div class="final-card-title">PENDENTES (<span id="final-count-pendentes">0</span>)</div>
+                <div id="final-list-pendentes" class="final-list"></div>
+              </div>
+
+              <div class="final-card">
+                <div class="final-card-title">FORA DE ROTA (<span id="final-count-fora">0</span>)</div>
+                <div id="final-list-fora" class="final-list"></div>
+              </div>
+
+              <div class="final-card">
+                <div class="final-card-title">DUPLICADOS (<span id="final-count-duplicados">0</span>)</div>
+                <div id="final-list-duplicados" class="final-list"></div>
+              </div>
+            </div>
+
+            <div class="final-footer">
+              Dica: maximize o zoom do navegador em 100% e tire o print desta área.
+            </div>
+          </div>
+        </div>
+
+        <!-- Upgrade: indicador de origem da entrada -->
         <input type="text" id="barcode-input" class="form-control" placeholder="Leia ou digite o código de barras" autofocus>
+        <small class="text-muted d-block mt-1">
+          Entrada detectada: <strong id="input-origin">—</strong>
+        </small>
 
         <div class="row text-center mt-4">
           <div class="col-md-3">
@@ -73,15 +207,14 @@
         <div class="text-center my-3">
           <input type="file" id="csv-input" accept=".csv" class="form-control mb-2">
           <button id="check-csv" class="btn btn-info mb-2">Checar CSV</button><br>
-          <!---button id="finish-btn" class="btn btn-danger">Finalizar Conferência</button>--->
           <button id="back-btn" class="btn btn-secondary">Voltar</button>
           <button id="export-xlsx" class="btn btn-warning btn-sm">Exportar XLSX</button>
           <button id="generate-message" class="btn btn-success btn-sm">Gerar Mensagem</button>
         </div>
-          <div class="text-center my-3">
+
+        <div class="text-center my-3">
           <textarea id="mensagem-final" class="form-control mt-3 d-none" rows="15"></textarea>
           <button id="copy-message" class="btn btn-success mt-2 d-none">Copiar Mensagem</button>
-
         </div>
       </div>
 
