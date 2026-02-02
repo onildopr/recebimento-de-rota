@@ -336,38 +336,16 @@ $(document).ready(() => {
       mensagem += `Rota ${cluster}\n`;
       mensagem += `Rodacoop | ${motorista}\n`;
 
-      mensagem += `\nRecebidos:\n`;
-      if (r.conferidos.size > 0) {
-        const recebidosOrdenados = Array.from(r.conferidos).sort();
-        recebidosOrdenados.forEach(id => {
+      mensagem += `\n\n`;
+      const idsOrdenados = Array.from(r.ids).sort((a, b) => String(a).localeCompare(String(b)));
+      if (idsOrdenados.length) {
+        idsOrdenados.forEach(id => {
           const status = r.statusById.get(id);
           const motivo = this.traduzirStatus(status || 'pendente');
           mensagem += `${id}: ${motivo}\n`;
         });
       } else {
-        mensagem += `(nenhum recebido)\n`;
-      }
-
-      mensagem += `\nNão recebidos:\n`;
-      if (r.ids.size > 0) {
-        const pendentesOrdenados = Array.from(r.ids).sort();
-        pendentesOrdenados.forEach(id => {
-          const status = r.statusById.get(id);
-          if (status !== 'transferred') {
-            const motivo = this.traduzirStatus(status || 'pendente');
-            mensagem += `${id}: ${motivo}\n`;
-          }
-        });
-      } else {
-        mensagem += `(nenhum pendente)\n`;
-      }
-
-      if (incluirForaDeRota && r.foraDeRota.size > 0) {
-        mensagem += `\nFora de rota:\n`;
-        const foraOrdenados = Array.from(r.foraDeRota).sort();
-        foraOrdenados.forEach(id => {
-          mensagem += `${id}: fora de rota\n`;
-        });
+        mensagem += `(nenhum ID encontrado no HTML)\n`;
       }
 
       $('#mensagem-final').val(mensagem).removeClass('d-none');
@@ -379,6 +357,52 @@ $(document).ready(() => {
     // ==========================
     importRoutesFromHtml(raw) {
       const source = String(raw || '');
+      // ORHC / ORH (robusto) - extrai do HTML inteiro e também por bloco
+      const extractOrhc = (htmlString) => {
+        try {
+          // 1) DOMParser (mais confiável)
+          const doc = new DOMParser().parseFromString(`<div id="wrap">${htmlString}</div>`, 'text/html');
+          const wrap = doc.getElementById('wrap');
+          if (wrap) {
+            // tenta achar pelo texto do card (ORH/ORHC)
+            const boxes = wrap.querySelectorAll('.metric-box, [class*="metric-box"]');
+            for (const box of boxes) {
+              const t = (box.textContent || '').toLowerCase();
+              if (t.includes('orh') || t.includes('orhc')) {
+                const p = box.querySelector('.metric-box__value p, [class*="metric-box__value"] p, p');
+                const val = (p?.textContent || '').trim();
+                const m = val.match(/(\d{1,2}:\d{2})\s*(h|H)\b/);
+                if (m) return `${m[1]} h`;
+              }
+            }
+
+            // fallback: primeiro HH:MM h dentro de metric-box__value
+            const ps = wrap.querySelectorAll('.metric-box__value p, [class*="metric-box__value"] p');
+            for (const p of ps) {
+              const val = (p.textContent || '').trim();
+              const m = val.match(/(\d{1,2}:\d{2})\s*(h|H)\b/);
+              if (m) return `${m[1]} h`;
+            }
+          }
+        } catch (e) {
+          // ignora e tenta regex abaixo
+        }
+
+        // 2) Regex tolerante (aceita &nbsp;, &#160; e <!-- -->)
+        const cleaned = String(htmlString || '')
+          .replace(/<!--[\s\S]*?-->/g, ' ')
+          .replace(/&nbsp;|&#160;/gi, ' ')
+          .replace(/\s+/g, ' ');
+
+        const m =
+          cleaned.match(/<div\s+class="metric-box__value"[^>]*>\s*<p[^>]*>\s*(\d{1,2}:\d{2})\s*(?:h|H)\s*<\/p>/i) ||
+          cleaned.match(/(\d{1,2}:\d{2})\s*(?:h|H)\b/i);
+
+        return m ? `${m[1]} h` : null;
+      };
+
+      const globalOrh = extractOrhc(source);
+
 
       // tenta quebrar em blocos por routeId
       const idxs = [];
@@ -389,11 +413,28 @@ $(document).ready(() => {
       }
 
       const blocks = [];
-      for (let i = 0; i < idxs.length; i++) {
-        const start = idxs[i];
-        const end = (i + 1 < idxs.length) ? idxs[i + 1] : source.length;
-        blocks.push(source.slice(start, end));
-      }
+// ⚠️ Importante: em alguns HTMLs, as métricas (ORH/ORHC) aparecem ANTES do `"routeId"`.
+// Então, para cada routeId, pegamos também um "lookback" para trás (ancorando em metric-box__value quando possível).
+const LOOKBACK_MAX = 12000; // caracteres
+for (let i = 0; i < idxs.length; i++) {
+  const ridx = idxs[i];
+  const next = (i + 1 < idxs.length) ? idxs[i + 1] : source.length;
+
+  // tenta ancorar o início no último metric-box__value antes do routeId (se estiver perto)
+  let start = ridx;
+  const anchor = source.lastIndexOf('metric-box__value', ridx);
+  if (anchor !== -1 && (ridx - anchor) <= LOOKBACK_MAX) {
+    start = anchor;
+  } else {
+    start = Math.max(0, ridx - LOOKBACK_MAX);
+  }
+
+  // garante que não "invada" demais o bloco anterior: não deixa start ser menor que o routeId anterior
+  if (i > 0) start = Math.max(start, idxs[i - 1]);
+
+  const end = next;
+  blocks.push(source.slice(start, end));
+}
 
       let imported = 0;
 
@@ -407,10 +448,9 @@ $(document).ready(() => {
         const routeId = String(routeMatch[1]);
         const r = this.routes.get(routeId) || this.makeEmptyRoute(routeId);
 
-        // ORHC e %DS (mesmos regex do seu)
-        let orhcMatch = /<div class="metric-box__value"><p>(\d{1,2}:\d{2}\s*h)<\/p><\/div>/i.exec(blockRaw);
-        if (!orhcMatch) orhcMatch = /(\d{1,2}:\d{2}\s*h)/i.exec(blockRaw);
-        r.orhc = orhcMatch ? orhcMatch[1] : (r.orhc || '-');
+
+        const orhc = extractOrhc(blockRaw) || globalOrh;
+        r.orhc = orhc ? orhc : (r.orhc || '-');
 
         let dsMatch = /<div class="chart-details-data__value-item">([\d.,]+)\s*<!-- -->\s*%<\/div>/i.exec(blockRaw);
         if (!dsMatch) dsMatch = /([\d.,]+)\s*%/i.exec(blockRaw);
@@ -936,4 +976,3 @@ ${blocosRotas.join('\n\n')}
     ConferenciaApp.copiarFechamento();
   });
 });
-
