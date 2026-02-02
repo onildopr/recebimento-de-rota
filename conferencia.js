@@ -766,7 +766,6 @@ ${blocosRotas.join('\n\n')}
     const qtd = ConferenciaApp.importRoutesFromHtml(raw);
     if (!qtd) return ConferenciaApp.alertar('Nenhuma rota importada (ou sem IDs pendentes).');
 
-    ConferenciaApp.alertar(`${qtd} rota(s) importada(s) e salva(s)! Selecione uma rota e clique em “Carregar rota”.`);
     $('#html-input').val('');
   });
 
@@ -976,3 +975,4 @@ ${blocosRotas.join('\n\n')}
     ConferenciaApp.copiarFechamento();
   });
 });
+
