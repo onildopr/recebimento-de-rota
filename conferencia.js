@@ -67,6 +67,9 @@ $(document).ready(() => {
         orhc: '-',
         percentualDS: '0 %',
 
+        // transportadora (carrier)
+        carrier: '',
+
         // ids = INSUCCESSOS/PENDENTES (extraídos do HTML)
         ids: new Set(),
         conferidos: new Set(),
@@ -97,6 +100,8 @@ $(document).ready(() => {
             destinationFacilityName: r.destinationFacilityName,
             orhc: r.orhc,
             percentualDS: r.percentualDS,
+
+            carrier: r.carrier,
 
             ids: Array.from(r.ids),
             conferidos: Array.from(r.conferidos),
@@ -129,6 +134,8 @@ $(document).ready(() => {
           r.destinationFacilityName = data.destinationFacilityName || '';
           r.orhc = data.orhc || '-';
           r.percentualDS = data.percentualDS || '0 %';
+
+          r.carrier = data.carrier || '';
 
           (data.ids || []).forEach(x => r.ids.add(x));
           (data.conferidos || []).forEach(x => r.conferidos.add(x));
@@ -169,6 +176,7 @@ $(document).ready(() => {
 
       const makeLabel = (r) => {
         const extras = [];
+        if (r.carrier) extras.push(r.carrier);
         if (r.cluster) extras.push(`CLUSTER ${r.cluster}`);
         if (r.destinationFacilityId) extras.push(`XPT ${r.destinationFacilityId}`);
         return `ROTA ${r.routeId}${extras.length ? ' • ' + extras.join(' • ') : ''}`;
@@ -334,10 +342,14 @@ $(document).ready(() => {
       mensagem += `🔴 Insucessos: ${totalInsucessos}\n\n`;
       mensagem += `♎ Justificativa:\n`;
       mensagem += `Rota ${cluster}\n`;
-      mensagem += `Rodacoop | ${motorista}\n`;
+      mensagem += `${(r.carrier && r.carrier.trim()) ? r.carrier.trim() : '—'} | ${motorista}\n`;
 
-      mensagem += `\n\n`;
-      const idsOrdenados = Array.from(r.ids).sort((a, b) => String(a).localeCompare(String(b)));
+      mensagem += `\n`;
+      const idsOrdenados = Array.from(new Set([
+        ...r.ids,         // pendentes
+        ...r.conferidos   // conferidos
+      ])).sort((a, b) => String(a).localeCompare(String(b)));
+
       if (idsOrdenados.length) {
         idsOrdenados.forEach(id => {
           const status = r.statusById.get(id);
@@ -469,6 +481,10 @@ for (let i = 0; i < idxs.length; i++) {
         const driverMatch = /"driverName":"([^"]+)"/.exec(html);
         if (driverMatch) r.driverName = driverMatch[1];
 
+        // carrier (transportadora / MLP) — ex: "carrier":"Rodacoop"
+        const carrierMatch = /"carrier"\s*:\s*"([^"]+)"/.exec(html);
+        if (carrierMatch) r.carrier = carrierMatch[1];
+
         // zera conjuntos dessa rota (reimport substitui)
         r.ids.clear();
         r.conferidos.clear();
@@ -555,6 +571,142 @@ for (let i = 0; i < idxs.length; i++) {
     },
 
     // ==========================
+    // XLSX: exporta TODAS as rotas no padrão "rota a rota"
+    //  Colunas: Rota(Cluster) | ID | Status(expedir/devolver) | Situação | Horário conferência
+    //  Inclui somente IDs da rota (pendentes + conferidos). Não inclui fora de rota.
+    // ==========================
+    exportXlsxRotaARotaTodasRotas() {
+      if (typeof XLSX === 'undefined') {
+        return this.alertar('Biblioteca XLSX não carregada.');
+      }
+
+      const header = ['Rota (Cluster)', 'ID', 'Status', 'Situação', 'Horário conferência'];
+      const ws_data = [header];
+
+      const devolverSet = new Set(['buyer_rejected', 'buyer_moved', 'damaged', 'picked_up']);
+      const toStatus = (sub) => {
+        const s = (sub || '').trim();
+        return devolverSet.has(s) ? 'DEVOLVER' : 'EXPEDIR';
+      };
+
+      // Ordena rotas por cluster (e depois por routeId)
+      const rotas = Array.from(this.routes.values()).sort((a, b) => {
+        const ac = String(a.cluster || '').localeCompare(String(b.cluster || ''));
+        if (ac !== 0) return ac;
+        return String(a.routeId || '').localeCompare(String(b.routeId || ''));
+      });
+
+      for (const r of rotas) {
+        const cluster = r.cluster || r.routeId || '—';
+
+        // IDs do universo da rota: pendentes + conferidos
+        const idsOrdenados = Array.from(new Set([
+          ...Array.from(r.conferidos),
+          ...Array.from(r.ids),
+        ])).sort((a, b) => String(a).localeCompare(String(b)));
+
+        // conferidos primeiro, depois pendentes (mantendo ordem por ID dentro de cada)
+        const conf = idsOrdenados.filter(id => r.conferidos.has(id));
+        const pend = idsOrdenados.filter(id => r.ids.has(id));
+
+        for (const id of conf) {
+          const sub = r.statusById.get(id) || '';
+          ws_data.push([
+            cluster,
+            id,
+            toStatus(sub),
+            'Recebido',
+            r.timestamps.get(id) || ''
+          ]);
+        }
+
+        for (const id of pend) {
+          const sub = r.statusById.get(id) || '';
+          ws_data.push([
+            cluster,
+            id,
+            toStatus(sub),
+            'Pendente',
+            ''
+          ]);
+        }
+      }
+
+      if (ws_data.length === 1) {
+        return this.alertar('Nenhuma rota/ID para exportar.');
+      }
+
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet(ws_data);
+      XLSX.utils.book_append_sheet(wb, ws, 'Rota a rota (todas)');
+
+      const nomeArquivo = `Conferencia_TodasRotas_RotaARota.xlsx`;
+      XLSX.writeFile(wb, nomeArquivo);
+    },
+
+    
+    // ==========================
+    // XLSX: exporta TODOS os pacotes bipados (por rota)
+    //  - 2 colunas por rota: [IDs bipados] + [Status (expedir/devolver)]
+    //  - Status:
+    //      devolver => buyer_rejected, buyer_moved, damaged, picked_up
+    //      expedir  => qualquer outro
+    // ==========================
+    exportXlsxBipadosPorRota(routeIds) {
+      if (typeof XLSX === 'undefined') {
+        return this.alertar('Biblioteca XLSX não carregada.');
+      }
+
+      const ids = (routeIds && routeIds.length) ? routeIds.map(String) : Array.from(this.routes.keys());
+
+      const toStatus = (sub) => {
+        const s = (sub || '').trim();
+        const devolver = new Set(['buyer_rejected', 'buyer_moved', 'damaged', 'picked_up']);
+        return devolver.has(s) ? 'DEVOLVER' : 'EXPEDIR';
+      };
+
+      // Para cada rota, lista de IDs bipados (conferidos + foraDeRota)
+      const cols = [];
+      const colData = []; // array de arrays, cada item: [{id,status},...]
+
+      for (const rid of ids) {
+        const r = this.routes.get(String(rid));
+        if (!r) continue;
+
+        const bipados = Array.from(new Set([
+          ...Array.from(r.conferidos),
+          ...Array.from(r.foraDeRota),
+        ])).sort((a, b) => String(a).localeCompare(String(b)));
+
+        cols.push(`ROTA ${r.cluster} - ID`, `ROTA ${r.cluster} - Status`);
+        colData.push(bipados.map(id => ({ id, status: toStatus(r.statusById.get(id)) })));
+      }
+
+      if (!cols.length) return this.alertar('Nenhuma rota para exportar.');
+
+      const maxLen = Math.max(0, ...colData.map(arr => arr.length));
+
+      const ws_data = [cols];
+      for (let i = 0; i < maxLen; i++) {
+        const row = [];
+        for (let c = 0; c < colData.length; c++) {
+          const item = colData[c][i];
+          row.push(item ? item.id : '');
+          row.push(item ? item.status : '');
+        }
+        ws_data.push(row);
+      }
+
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet(ws_data);
+      XLSX.utils.book_append_sheet(wb, ws, 'Bipados');
+
+      const now = new Date();
+      const pad2 = (n) => String(n).padStart(2, '0');
+      const nomeArquivo = `Bipados_${now.getFullYear()}-${pad2(now.getMonth()+1)}-${pad2(now.getDate())}.xlsx`;
+      XLSX.writeFile(wb, nomeArquivo);
+    },
+// ==========================
     // FECHAMENTO DIÁRIO
     // ==========================
     initFechamentoUI() {
@@ -605,19 +757,8 @@ for (let i = 0; i < idxs.length; i++) {
         totalInsucessos += isFinite(v) ? v : 0;
       });
 
+      // ✅ único campo que deve ser preenchido automaticamente:
       $('#fd-total-insucessos').val(totalInsucessos);
-
-      // sugere Total de Pacotes = totalInsucessos (como seu cenário é só insucesso por rota)
-      const $tp = $('#fd-total-pacotes');
-      if ($tp.length && ($tp.val() === '' || Number($tp.val()) === 0)) {
-        $tp.val(totalInsucessos);
-      }
-
-      // pendentes sugere = totalInsucessos se vazio
-      const $pend = $('#fd-pendentes');
-      if ($pend.length && ($pend.val() === '' || Number($pend.val()) === 0)) {
-        $pend.val(totalInsucessos);
-      }
     },
 
     preencherSugestoesFechamento() {
@@ -680,7 +821,11 @@ for (let i = 0; i < idxs.length; i++) {
     const motorista = (r.driverName && r.driverName.trim()) ? r.driverName.trim() : '(não informado)';
 
     // lista de IDs pendentes/insucesso desta rota com motivo (substatus traduzido)
-    const idsOrdenados = Array.from(r.ids).sort((a, b) => String(a).localeCompare(String(b)));
+    const idsOrdenados = Array.from(new Set([
+      ...r.ids,         // pendentes
+      ...r.conferidos   // conferidos
+    ])).sort((a, b) => String(a).localeCompare(String(b)));
+
 
     const linhasIds = idsOrdenados.map(id => {
       const sub = r.statusById.get(id); // pode ser null
@@ -691,13 +836,34 @@ for (let i = 0; i < idxs.length; i++) {
     const bloco =
 `♎ Justificativa:
 Rota ${rotaLabel}
-Rodacoop | ${motorista}
+${(r.carrier && r.carrier.trim()) ? r.carrier.trim() : '—'} | ${motorista}
 
 ${linhasIds.length ? linhasIds.join('\n') : '(sem IDs de insucesso)'}
 `.trim();
 
     blocosRotas.push(bloco);
   }
+
+  // Agrupa justificativas por transportadora (carrier)
+  const carrierGroups = new Map();
+  for (const b of blocosRotas) {
+    // extrai a linha do carrier do bloco (3ª linha do cabeçalho)
+    const lines = b.split(/\r?\n/);
+    const carrierLine = (lines[2] || '').trim(); // "<carrier> | <motorista>"
+    const carrierName = (carrierLine.split('|')[0] || '—').trim() || '—';
+
+    if (!carrierGroups.has(carrierName)) carrierGroups.set(carrierName, []);
+    carrierGroups.get(carrierName).push(b);
+  }
+
+  // monta texto final agrupado
+  const blocosFormatados = Array.from(carrierGroups.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([carrierName, blocks]) => {
+      const header = `\n\n==== ${carrierName} ====`;
+      return header + '\n\n' + blocks.join('\n\n');
+    })
+    .join('');
 
   const msg =
 `RELATÓRIO RODACOOP ${base} 🚀
@@ -721,7 +887,7 @@ RECLAMAÇÃO: ${reclamacao}
 Total de Pacotes: ${totalPacotes}
 Total de Insucessos: ${totalInsucessos}
 
-${blocosRotas.join('\n\n')}
+${blocosFormatados.trim()}
 `.trim();
 
   $('#fd-output').val(msg);
@@ -854,6 +1020,19 @@ ${blocosRotas.join('\n\n')}
     ConferenciaApp.exportXlsxRotaAtual();
   });
 
+  // export xlsx (bipados por rota) — usa as rotas selecionadas no fechamento; se nada selecionado, exporta todas
+  $('#fd-export-bipados').click(() => {
+    const selected = ConferenciaApp.getSelectedFechamentoRouteIds();
+    ConferenciaApp.exportXlsxBipadosPorRota(selected);
+  });
+
+  // export xlsx (rota a rota) — TODAS as rotas (pendentes + conferidos)
+  $('#fd-export-rotaarota').click(() => {
+    ConferenciaApp.exportXlsxRotaARotaTodasRotas();
+  });
+
+
+
   // mensagem atual (rota atual)
   $('#generate-message').click(() => {
     ConferenciaApp.gerarMensagemResumo({ incluirForaDeRota: true });
@@ -916,6 +1095,7 @@ ${blocosRotas.join('\n\n')}
       const id = ConferenciaApp.normalizarCodigo(raw);
 
       if (id) ConferenciaApp.conferirId(id, origemEntrada);
+      
 
       scanBuffer = '';
       origemEntrada = 'manual';
@@ -975,4 +1155,3 @@ ${blocosRotas.join('\n\n')}
     ConferenciaApp.copiarFechamento();
   });
 });
-
