@@ -425,28 +425,28 @@ $(document).ready(() => {
       }
 
       const blocks = [];
-// ⚠️ Importante: em alguns HTMLs, as métricas (ORH/ORHC) aparecem ANTES do `"routeId"`.
-// Então, para cada routeId, pegamos também um "lookback" para trás (ancorando em metric-box__value quando possível).
-const LOOKBACK_MAX = 12000; // caracteres
-for (let i = 0; i < idxs.length; i++) {
-  const ridx = idxs[i];
-  const next = (i + 1 < idxs.length) ? idxs[i + 1] : source.length;
+      // ⚠️ Importante: em alguns HTMLs, as métricas (ORH/ORHC) aparecem ANTES do `"routeId"`.
+      // Então, para cada routeId, pegamos também um "lookback" para trás (ancorando em metric-box__value quando possível).
+      const LOOKBACK_MAX = 12000; // caracteres
+      for (let i = 0; i < idxs.length; i++) {
+        const ridx = idxs[i];
+        const next = (i + 1 < idxs.length) ? idxs[i + 1] : source.length;
 
-  // tenta ancorar o início no último metric-box__value antes do routeId (se estiver perto)
-  let start = ridx;
-  const anchor = source.lastIndexOf('metric-box__value', ridx);
-  if (anchor !== -1 && (ridx - anchor) <= LOOKBACK_MAX) {
-    start = anchor;
-  } else {
-    start = Math.max(0, ridx - LOOKBACK_MAX);
-  }
+        // tenta ancorar o início no último metric-box__value antes do routeId (se estiver perto)
+        let start = ridx;
+        const anchor = source.lastIndexOf('metric-box__value', ridx);
+        if (anchor !== -1 && (ridx - anchor) <= LOOKBACK_MAX) {
+          start = anchor;
+        } else {
+          start = Math.max(0, ridx - LOOKBACK_MAX);
+        }
 
-  // garante que não "invada" demais o bloco anterior: não deixa start ser menor que o routeId anterior
-  if (i > 0) start = Math.max(start, idxs[i - 1]);
+        // garante que não "invada" demais o bloco anterior: não deixa start ser menor que o routeId anterior
+        if (i > 0) start = Math.max(start, idxs[i - 1]);
 
-  const end = next;
-  blocks.push(source.slice(start, end));
-}
+        const end = next;
+        blocks.push(source.slice(start, end));
+      }
 
       let imported = 0;
 
@@ -464,9 +464,16 @@ for (let i = 0; i < idxs.length; i++) {
         const orhc = extractOrhc(blockRaw) || globalOrh;
         r.orhc = orhc ? orhc : (r.orhc || '-');
 
-        let dsMatch = /<div class="chart-details-data__value-item">([\d.,]+)\s*<!-- -->\s*%<\/div>/i.exec(blockRaw);
-        if (!dsMatch) dsMatch = /([\d.,]+)\s*%/i.exec(blockRaw);
+        // DS: pega o único .chart-details-data__value-item do bloco
+        let dsMatch = /chart-details-data__value-item">([\d.,]+)\s*<!--\s*-->\s*%<\/div>/i.exec(blockRaw);
+
+        // fallback caso o comentário <!-- --> não venha exatamente assim
+        if (!dsMatch) {
+          dsMatch = /chart-details-data__value-item">([\d.,]+)\s*%<\/div>/i.exec(blockRaw);
+        }
+
         r.percentualDS = dsMatch ? `${dsMatch[1]} %` : (r.percentualDS || '0 %');
+
 
         // cluster, destino, motorista
         const clusterMatch = /"cluster":"([^"]+)"/.exec(html);
