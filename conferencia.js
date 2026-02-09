@@ -416,6 +416,24 @@ $(document).ready(() => {
       const globalOrh = extractOrhc(source);
 
 
+      // %DS GLOBAL da operação: baseado no título "Entregas com sucesso"
+      // (esse indicador normalmente não é por rota; ele vem no painel geral)
+      const extractGlobalDS = (fullHtml) => {
+        const cleaned = String(fullHtml || '')
+          .replace(/<!--[\s\S]*?-->/g, ' ')
+          .replace(/\s+/g, ' ');
+
+        const m = cleaned.match(
+          /chart-details-data__title--truncate">\s*Entregas com sucesso\s*<\/div>[\s\S]*?chart-details-data__value-item">\s*([\d.,]+)\s*%/i
+        );
+
+        return m ? `${m[1]} %` : null;
+      };
+
+      const globalDS = extractGlobalDS(source);
+
+
+
       // tenta quebrar em blocos por routeId
       const idxs = [];
       for (const m of source.matchAll(/"routeId":\s*(\d+)/g)) idxs.push(m.index);
@@ -450,7 +468,8 @@ $(document).ready(() => {
 
       let imported = 0;
 
-      for (const blockRaw of blocks) {
+      for (let i = 0; i < blocks.length; i++) {
+        const blockRaw = blocks[i];
         // seu código atual “limpa tags” pra facilitar regex
         let html = blockRaw.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
 
@@ -460,22 +479,11 @@ $(document).ready(() => {
         const routeId = String(routeMatch[1]);
         const r = this.routes.get(routeId) || this.makeEmptyRoute(routeId);
 
-
         const orhc = extractOrhc(blockRaw) || globalOrh;
         r.orhc = orhc ? orhc : (r.orhc || '-');
-
-        // DS: pega o único .chart-details-data__value-item do bloco
-        let dsMatch = /chart-details-data__value-item">([\d.,]+)\s*<!--\s*-->\s*%<\/div>/i.exec(blockRaw);
-
-        // fallback caso o comentário <!-- --> não venha exatamente assim
-        if (!dsMatch) {
-          dsMatch = /chart-details-data__value-item">([\d.,]+)\s*%<\/div>/i.exec(blockRaw);
-        }
-
-        r.percentualDS = dsMatch ? `${dsMatch[1]} %` : (r.percentualDS || '0 %');
-
-
-        // cluster, destino, motorista
+        // %DS (Entregas com sucesso) — indicador global da operação
+        r.percentualDS = globalDS ? globalDS : (r.percentualDS || '0 %');
+// cluster, destino, motorista
         const clusterMatch = /"cluster":"([^"]+)"/.exec(html);
         if (clusterMatch) r.cluster = clusterMatch[1];
 
@@ -651,7 +659,6 @@ $(document).ready(() => {
       XLSX.writeFile(wb, nomeArquivo);
     },
 
-    
     // ==========================
     // XLSX: exporta TODOS os pacotes bipados (por rota)
     //  - 2 colunas por rota: [IDs bipados] + [Status (expedir/devolver)]
@@ -713,7 +720,8 @@ $(document).ready(() => {
       const nomeArquivo = `Bipados_${now.getFullYear()}-${pad2(now.getMonth()+1)}-${pad2(now.getDate())}.xlsx`;
       XLSX.writeFile(wb, nomeArquivo);
     },
-// ==========================
+
+    // ==========================
     // FECHAMENTO DIÁRIO
     // ==========================
     initFechamentoUI() {
@@ -785,62 +793,61 @@ $(document).ready(() => {
       this.recalcFechamentoTotals();
     },
 
-  gerarMensagemFechamento() {
-  const getV = (id) => String($(`#${id}`).val() ?? '').trim();
+    gerarMensagemFechamento() {
+      const getV = (id) => String($(`#${id}`).val() ?? '').trim();
 
-  const dataISO = getV('fd-data');
-  const base = getV('fd-base') || '';
-  const ciclo = getV('fd-ciclo') || 'AM';
+      const dataISO = getV('fd-data');
+      const base = getV('fd-base') || '';
+      const ciclo = getV('fd-ciclo') || 'AM';
 
-  const fmtDataBR = (iso) => {
-    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
-    if (!m) return iso || '';
-    return `${m[3]}/${m[2]}/${m[1]}`;
-  };
+      const fmtDataBR = (iso) => {
+        const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
+        if (!m) return iso || '';
+        return `${m[3]}/${m[2]}/${m[1]}`;
+      };
 
-  const solicitados = getV('fd-solicitados');
-  const carregados = getV('fd-carregados');
-  const rodacoop = getV('fd-rodacoop');
-  const noshow = getV('fd-noshow');
-  const backups = getV('fd-backups');
-  const ambulancia = getV('fd-ambulancia');
+      const solicitados = getV('fd-solicitados');
+      const carregados = getV('fd-carregados');
+      const rodacoop = getV('fd-rodacoop');
+      const noshow = getV('fd-noshow');
+      const backups = getV('fd-backups');
+      const ambulancia = getV('fd-ambulancia');
 
-  const performance = getV('fd-performance');
-  const pendentes = getV('fd-pendentes');
-  const insucessosGeral = getV('fd-insucessos');
-  const reclamacao = getV('fd-reclamacao');
+      const performance = getV('fd-performance');
+      const pendentes = getV('fd-pendentes');
+      const insucessosGeral = getV('fd-insucessos');
+      const reclamacao = getV('fd-reclamacao');
 
-  const totalPacotes = getV('fd-total-pacotes');
-  const totalInsucessos = getV('fd-total-insucessos');
+      const totalPacotes = getV('fd-total-pacotes');
+      const totalInsucessos = getV('fd-total-insucessos');
 
-  // ====== Blocos por rota no formato que você pediu ======
-  const blocosRotas = [];
-  const selectedRouteIds = this.getSelectedFechamentoRouteIds();
+      // ====== Blocos por rota no formato que você pediu ======
+      const blocosRotas = [];
+      const selectedRouteIds = this.getSelectedFechamentoRouteIds();
 
-  for (const rid of selectedRouteIds) {
-    const r = this.routes.get(String(rid));
-    if (!r) continue;
+      for (const rid of selectedRouteIds) {
+        const r = this.routes.get(String(rid));
+        if (!r) continue;
 
-    // prioridade: cluster (ex: J20_AM7) -> senão routeId
-    const rotaLabel = (r.cluster && r.cluster.trim()) ? r.cluster.trim() : r.routeId;
+        // prioridade: cluster (ex: J20_AM7) -> senão routeId
+        const rotaLabel = (r.cluster && r.cluster.trim()) ? r.cluster.trim() : r.routeId;
 
-    // motorista
-    const motorista = (r.driverName && r.driverName.trim()) ? r.driverName.trim() : '(não informado)';
+        // motorista
+        const motorista = (r.driverName && r.driverName.trim()) ? r.driverName.trim() : '(não informado)';
 
-    // lista de IDs pendentes/insucesso desta rota com motivo (substatus traduzido)
-    const idsOrdenados = Array.from(new Set([
-      ...r.ids,         // pendentes
-      ...r.conferidos   // conferidos
-    ])).sort((a, b) => String(a).localeCompare(String(b)));
+        // lista de IDs pendentes/insucesso desta rota com motivo (substatus traduzido)
+        const idsOrdenados = Array.from(new Set([
+          ...r.ids,         // pendentes
+          ...r.conferidos   // conferidos
+        ])).sort((a, b) => String(a).localeCompare(String(b)));
 
+        const linhasIds = idsOrdenados.map(id => {
+          const sub = r.statusById.get(id); // pode ser null
+          const motivo = this.traduzirStatus(sub || 'pendente');
+          return `${id}: ${motivo}`;
+        });
 
-    const linhasIds = idsOrdenados.map(id => {
-      const sub = r.statusById.get(id); // pode ser null
-      const motivo = this.traduzirStatus(sub || 'pendente');
-      return `${id}: ${motivo}`;
-    });
-
-    const bloco =
+        const bloco =
 `♎ Justificativa:
 Rota ${rotaLabel}
 ${(r.carrier && r.carrier.trim()) ? r.carrier.trim() : '—'} | ${motorista}
@@ -848,31 +855,31 @@ ${(r.carrier && r.carrier.trim()) ? r.carrier.trim() : '—'} | ${motorista}
 ${linhasIds.length ? linhasIds.join('\n') : '(sem IDs de insucesso)'}
 `.trim();
 
-    blocosRotas.push(bloco);
-  }
+        blocosRotas.push(bloco);
+      }
 
-  // Agrupa justificativas por transportadora (carrier)
-  const carrierGroups = new Map();
-  for (const b of blocosRotas) {
-    // extrai a linha do carrier do bloco (3ª linha do cabeçalho)
-    const lines = b.split(/\r?\n/);
-    const carrierLine = (lines[2] || '').trim(); // "<carrier> | <motorista>"
-    const carrierName = (carrierLine.split('|')[0] || '—').trim() || '—';
+      // Agrupa justificativas por transportadora (carrier)
+      const carrierGroups = new Map();
+      for (const b of blocosRotas) {
+        // extrai a linha do carrier do bloco (3ª linha do cabeçalho)
+        const lines = b.split(/\r?\n/);
+        const carrierLine = (lines[2] || '').trim(); // "<carrier> | <motorista>"
+        const carrierName = (carrierLine.split('|')[0] || '—').trim() || '—';
 
-    if (!carrierGroups.has(carrierName)) carrierGroups.set(carrierName, []);
-    carrierGroups.get(carrierName).push(b);
-  }
+        if (!carrierGroups.has(carrierName)) carrierGroups.set(carrierName, []);
+        carrierGroups.get(carrierName).push(b);
+      }
 
-  // monta texto final agrupado
-  const blocosFormatados = Array.from(carrierGroups.entries())
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([carrierName, blocks]) => {
-      const header = `\n\n==== ${carrierName} ====`;
-      return header + '\n\n' + blocks.join('\n\n');
-    })
-    .join('');
+      // monta texto final agrupado
+      const blocosFormatados = Array.from(carrierGroups.entries())
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([carrierName, blocks]) => {
+          const header = `\n\n==== ${carrierName} ====`;
+          return header + '\n\n' + blocks.join('\n\n');
+        })
+        .join('');
 
-  const msg =
+      const msg =
 `RELATÓRIO RODACOOP ${base} 🚀
 ${fmtDataBR(dataISO)} - Data do dia do fechamento
 ————————————————————
@@ -897,9 +904,8 @@ Total de Insucessos: ${totalInsucessos}
 ${blocosFormatados.trim()}
 `.trim();
 
-  $('#fd-output').val(msg);
-  },
-
+      $('#fd-output').val(msg);
+    },
 
     copiarFechamento() {
       const text = ($('#fd-output').val() || '').trim();
@@ -1038,8 +1044,6 @@ ${blocosFormatados.trim()}
     ConferenciaApp.exportXlsxRotaARotaTodasRotas();
   });
 
-
-
   // mensagem atual (rota atual)
   $('#generate-message').click(() => {
     ConferenciaApp.gerarMensagemResumo({ incluirForaDeRota: true });
@@ -1102,7 +1106,6 @@ ${blocosFormatados.trim()}
       const id = ConferenciaApp.normalizarCodigo(raw);
 
       if (id) ConferenciaApp.conferirId(id, origemEntrada);
-      
 
       scanBuffer = '';
       origemEntrada = 'manual';
