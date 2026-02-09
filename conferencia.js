@@ -328,7 +328,7 @@ $(document).ready(() => {
       const destino = r.destinationFacilityName || $('#destination-facility-name').text().replace('DESTINO:', '').trim();
       const pendentes = r.ids.size;
       const naoVisitados = Array.from(r.ids).filter(id => r.statusById.get(id) === 'unvisited_address').length;
-      const totalInsucessos = incluirForaDeRota ? (pendentes + r.foraDeRota.size) : pendentes;
+      const totalInsucessos = incluirForaDeRota ? (pendentes + r.foraDeRota.size + r.conferidos.size) : pendentes;
       const motorista = r.driverName || '(não informado)';
       const cluster = r.cluster || '(sem cluster)';
 
@@ -1165,3 +1165,4 @@ ${blocosFormatados.trim()}
     ConferenciaApp.copiarFechamento();
   });
 });
+
