@@ -6,170 +6,15 @@
   <title>Conferência de Rota - IDs Pendentes</title>
 
   <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://onildopr.github.io/rodacoop.ui/css/rodacoop.css">
   <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 
-  <style>
-    /* ===== Paleta (Laranja/Preto) ===== */
-    :root{
-      --brand-orange: #ff6a00;
-      --brand-orange-2: #ff8a2a;
-      --brand-black: #0f0f10;
-      --brand-gray: #1b1b1d;
-      --brand-border: rgba(255,106,0,.25);
-    }
 
-    /* ===== Toques gerais (sem bagunçar Bootstrap) ===== */
-    .brand-title{
-      color: var(--brand-black);
-      font-weight: 900;
-      letter-spacing: .3px;
-    }
-
-    .brand-subtle{
-      color: rgba(15,15,16,.65);
-    }
-
-    .brand-card{
-      border: 1px solid var(--brand-border);
-      box-shadow: 0 6px 18px rgba(15,15,16,.06);
-      border-radius: 12px;
-    }
-
-    .brand-hr{
-      border-top: 1px solid rgba(255,106,0,.22);
-    }
-
-    .btn-orange{
-      background: var(--brand-orange);
-      border-color: var(--brand-orange);
-      color: #fff;
-      font-weight: 800;
-    }
-    .btn-orange:hover{
-      background: var(--brand-orange-2);
-      border-color: var(--brand-orange-2);
-      color: #fff;
-    }
-    .btn-black{
-      background: var(--brand-black);
-      border-color: var(--brand-black);
-      color:#fff;
-      font-weight: 800;
-    }
-    .btn-black:hover{
-      background: #000;
-      border-color: #000;
-      color:#fff;
-    }
-    .badge-orange{
-      background: var(--brand-orange);
-      color:#fff;
-      font-weight:800;
-    }
-
-    .form-control:focus{
-      border-color: rgba(255,106,0,.55);
-      box-shadow: 0 0 0 .2rem rgba(255,106,0,.18);
-    }
-
-    /* ===== utilidades já existentes ===== */
-    .bg-success-flash { background-color: #d4edda !important; }
-    .bg-danger-flash { background-color: #f8d7da !important; }
-    .d-none { display: none !important; }
-    .list-section { max-height: 400px; overflow-y: auto; }
-
-    #input-origin {
-      padding: 2px 8px;
-      border-radius: 10px;
-      display: inline-block;
-      background: rgba(255,106,0,0.10);
-      border: 1px solid rgba(255,106,0,0.22);
-      font-weight: 800;
-      letter-spacing: 0.3px;
-      color: var(--brand-black);
-    }
-
-    /* ===== Tela final 1700x900 para print ===== */
-    .final-screen{
-      width:1700px;
-      height:900px;
-      background:#fff;
-      border:2px solid rgba(255,106,0,0.22);
-      border-radius:12px;
-      padding:14px;
-      box-sizing:border-box;
-      margin: 0 auto;
-    }
-
-    .final-header{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      margin-bottom:10px;
-    }
-
-    .final-title{ font-size:20px; font-weight:900; color: var(--brand-black); }
-    .final-sub{ font-size:12px; opacity:0.75; }
-
-    .final-grid{
-      display:grid;
-      grid-template-columns: 1fr 1fr;
-      grid-template-rows: 1fr 1fr;
-      gap:10px;
-      height: calc(900px - 14px - 14px - 56px);
-    }
-
-    .final-card{
-      border:1px solid rgba(255,106,0,0.18);
-      border-radius:12px;
-      padding:10px;
-      box-sizing:border-box;
-      overflow:hidden;
-      background: linear-gradient(180deg, rgba(255,106,0,0.05), rgba(0,0,0,0));
-    }
-
-    .final-card-title{
-      font-size:14px;
-      font-weight:900;
-      margin-bottom:6px;
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      color: var(--brand-gray);
-    }
-
-    .final-list{
-      height: calc(100% - 22px);
-      font-size:10px;
-      line-height:1.15;
-      column-count:4;
-      column-gap:12px;
-      overflow:hidden;
-      white-space:nowrap;
-    }
-
-    .final-list .id-item{ display:block; padding:1px 0; }
-    .final-footer{ margin-top:8px; font-size:11px; opacity:0.7; }
-
-    /* ===== Fechamento Diário (somente ele mais largo) ===== */
-    #fechamento-interface{
-      padding: 18px 0 28px 0;
-      background: linear-gradient(180deg, rgba(255,106,0,0.06), rgba(0,0,0,0));
-    }
-    #fechamento-interface .fd-wrap{
-      max-width: 1850px;
-      margin: 0 auto;
-    }
-    .fd-sticky {
-      position: sticky;
-      top: 12px;
-    }
-  </style>
 </head>
 
-<body>
+<body class="rk-scope">
 
 <!-- =========================
      TELAS NORMAIS (LARGURA PADRÃO)
@@ -542,5 +387,10 @@
 
 <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js"></script>
 <script src="conferencia.js"></script>
+
+<a href="https://onildopr.github.io/rodacoop.ui/" class="rk-back-btn">
+  ← Painel Operacional
+</a>
+
 </body>
 </html>
