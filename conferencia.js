@@ -41,6 +41,7 @@ $(document).ready(() => {
         'inaccessible_address' : 'Endereço inacessível',
         'blocked_by_keyword':'Palavra-chave incorreta',
         'picked_up':'Coletado',
+        'blocked' : 'Envios suspenso por fraude'
       };
       return mapa[codigo] || codigo;
     },
@@ -1165,4 +1166,5 @@ ${blocosFormatados.trim()}
     ConferenciaApp.copiarFechamento();
   });
 });
+
 
