@@ -41,7 +41,6 @@ $(document).ready(() => {
         'inaccessible_address' : 'Endereço inacessível',
         'blocked_by_keyword':'Palavra-chave incorreta',
         'picked_up':'Coletado',
-        'blocked' : 'Envios suspenso por fraude'
       };
       return mapa[codigo] || codigo;
     },
@@ -420,16 +419,15 @@ $(document).ready(() => {
       // %DS GLOBAL da operação: baseado no título "Entregas com sucesso"
       // (esse indicador normalmente não é por rota; ele vem no painel geral)
       const extractGlobalDS = (fullHtml) => {
-        const cleaned = String(fullHtml || '')
-          .replace(/<!--[\s\S]*?-->/g, ' ')
-          .replace(/\s+/g, ' ');
+        const cleaned = String(fullHtml || '').replace(/\s+/g, ' ');
 
         const m = cleaned.match(
-          /chart-details-data__title--truncate">\s*Bem-sucedidos\s*<\/div>[\s\S]*?chart-details-data__value-item">\s*([\d.,]+)\s*%/i
+          /chart-details-data__row[\s\S]*?(?:Bem-sucedidos|Entregas com sucesso)<\/span><\/div><div class="chart-details-data__values">[\s\S]*?<span[^>]*>\s*\d+\s*<\/span>\s*<span[^>]*>\s*([\d.,]+)(?:<!--[\s\S]*?-->)?\s*%<\/span>/i
         );
 
         return m ? `${m[1]} %` : null;
       };
+
 
       const globalDS = extractGlobalDS(source);
 
@@ -1166,5 +1164,3 @@ ${blocosFormatados.trim()}
     ConferenciaApp.copiarFechamento();
   });
 });
-
-
