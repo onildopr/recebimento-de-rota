@@ -425,7 +425,7 @@ $(document).ready(() => {
           .replace(/\s+/g, ' ');
 
         const m = cleaned.match(
-          /chart-details-data__title--truncate">\s*Entregas com sucesso\s*<\/div>[\s\S]*?chart-details-data__value-item">\s*([\d.,]+)\s*%/i
+          /chart-details-data__title--truncate">\s*Bem-sucedidos\s*<\/div>[\s\S]*?chart-details-data__value-item">\s*([\d.,]+)\s*%/i
         );
 
         return m ? `${m[1]} %` : null;
